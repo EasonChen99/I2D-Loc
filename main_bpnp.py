@@ -18,8 +18,8 @@ from data_preprocess import Data_preprocess
 from losses import sequence_loss
 import depth_map_utils
 from flow_viz import flow_to_image
-from flow2pose import Flow2Pose, err_Pose
-
+from flow2pose import Flow2PoseBPnP, err_Pose
+from BPnP import BPnP
 
 occlusion_kernel = 5  # 3
 occlusion_threshold = 3  # 3.9999
@@ -89,7 +89,7 @@ def train(args, TrainImgLoader, model, optimizer, scheduler, scaler, logger):
 
         logger.push(metrics)
 
-def test(args, TestImgLoader, model, cal_pose=False):
+def test(args, TestImgLoader, model, bpnp, cal_pose=False):
     global occlusion_threshold, occlusion_kernel
     model.eval()
     out_list, epe_list = [], []
@@ -154,7 +154,7 @@ def test(args, TestImgLoader, model, cal_pose=False):
             epe_list.append(epe[val].mean().item())
             out_list.append(out[val].cpu().numpy())
         else:
-            R_pred, T_pred = Flow2Pose(flow_up, lidar_input, calib)
+            R_pred, T_pred = Flow2PoseBPnP(flow_up, lidar_input, calib, bpnp)
             Time += time.time() - end
             err_r, err_t, is_fail = err_Pose(R_pred, T_pred, R_err[0], T_err[0])
             if is_fail:
@@ -180,8 +180,7 @@ def test(args, TestImgLoader, model, cal_pose=False):
 if __name__ == '__main__':
     parser = argparse.ArgumentParser()
     parser.add_argument('--name', default='raft', help="name your experiment")
-    parser.add_argument('--data_path', type=str, metavar='DIR',
-                        default='/home/chenkuangyi/2D3DRegistration/data/KITTI/sequences',
+    parser.add_argument('--data_path', type=str, metavar='DIR', default='/home/chenkuangyi/2D3DRegistration/data/KITTI/sequences',
                         help='path to dataset')
     parser.add_argument('--test_sequence', type=str, default='00')
     parser.add_argument('--load_checkpoints', help="restore checkpoint")
@@ -221,6 +220,8 @@ if __name__ == '__main__':
 
     model.cuda()
 
+    bpnp = BPnP.apply
+
     def init_fn(x):
         return _init_fn(x, seed)
 
@@ -237,7 +238,7 @@ if __name__ == '__main__':
                                                 pin_memory=True)
     if args.evaluate:
         with torch.no_grad():
-            _, _ = test(args, TestImgLoader, model, cal_pose=True)
+            _, _ = test(args, TestImgLoader, model, bpnp, cal_pose=True)
         sys.exit()
 
     dataset_train = DatasetVisibilityKittiSingle(args.data_path, max_r=args.max_r, max_t=args.max_t,

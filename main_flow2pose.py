@@ -7,18 +7,20 @@ from torch.utils.data import DataLoader, RandomSampler
 import argparse
 import visibility
 import time
+import mathutils
 
 sys.path.append('core')
 from raft import RAFT
 from datasets_kitti import DatasetVisibilityKittiSingle
 from camera_model import CameraModel
 from utils import fetch_optimizer, Logger, count_parameters
-from utils_point import merge_inputs, overlay_imgs
+from utils_point import merge_inputs, overlay_imgs, invert_pose
 from data_preprocess import Data_preprocess
 from losses import sequence_loss
 import depth_map_utils
 from flow_viz import flow_to_image
-from flow2pose import Flow2Pose, err_Pose
+from flow2pose import err_Pose
+from flow2posenet import Flow2PoseNet
 
 
 occlusion_kernel = 5  # 3
@@ -116,8 +118,22 @@ def test(args, TestImgLoader, model, cal_pose=False):
         depth_img_input = torch.tensor(depth_img_input).float().cuda()
         depth_img_input = depth_img_input.unsqueeze(1)
 
+        # produce intrinsicLayer
+        h, w = depth_img_input.shape[2], depth_img_input.shape[3]
+        cam_params = calib[0].cpu().numpy()
+        x, y = 28, 140
+        cam_params[2] = cam_params[2] + 480 - (y + y + 960) / 2.
+        cam_params[3] = cam_params[3] + 160 - (x + x + 320) / 2.
+        fx, fy, ox, oy = cam_params[0], cam_params[1], cam_params[2], cam_params[3]
+        ww, hh = np.meshgrid(range(w), range(h))
+        ww = (ww.astype(np.float32) - ox + 0.5) / fx
+        hh = (hh.astype(np.float32) - oy + 0.5) / fy
+        intrinsicLayer = np.stack((ww, hh))
+        intrinsicLayer = torch.tensor(intrinsicLayer).cuda().unsqueeze(0)
+
         end = time.time()
-        _, flow_up = model(depth_img_input, rgb_input, lidar_mask=lidar_input, iters=24, test_mode=True)
+        flow_up, pose = model(depth_img_input, rgb_input, lidar_input, intrinsicLayer, test_mode=True)
+        Time += time.time() - end
 
         if args.render:
             if not os.path.exists(f"./visulization"):
@@ -154,8 +170,12 @@ def test(args, TestImgLoader, model, cal_pose=False):
             epe_list.append(epe[val].mean().item())
             out_list.append(out[val].cpu().numpy())
         else:
-            R_pred, T_pred = Flow2Pose(flow_up, lidar_input, calib)
-            Time += time.time() - end
+            rvecs = pose[0, 3:]
+            tvecs = pose[0, :3] * 10
+            R_pred = mathutils.Euler((rvecs[0], rvecs[1], rvecs[2]), 'XYZ')
+            T_pred = mathutils.Vector((tvecs[0], tvecs[1], tvecs[2]))
+            R_pred, T_pred = invert_pose(R_pred, T_pred)
+            R_pred, T_pred = torch.tensor(R_pred), torch.tensor(T_pred)
             err_r, err_t, is_fail = err_Pose(R_pred, T_pred, R_err[0], T_err[0])
             if is_fail:
                 outliers.append(i_batch)
@@ -180,11 +200,11 @@ def test(args, TestImgLoader, model, cal_pose=False):
 if __name__ == '__main__':
     parser = argparse.ArgumentParser()
     parser.add_argument('--name', default='raft', help="name your experiment")
-    parser.add_argument('--data_path', type=str, metavar='DIR',
-                        default='/home/chenkuangyi/2D3DRegistration/data/KITTI/sequences',
+    parser.add_argument('--data_path', type=str, metavar='DIR', default='/home/chenkuangyi/2D3DRegistration/data/KITTI/sequences',
                         help='path to dataset')
     parser.add_argument('--test_sequence', type=str, default='00')
-    parser.add_argument('--load_checkpoints', help="restore checkpoint")
+    parser.add_argument('--load_flownet_checkpoints', help="restore checkpoint")
+    parser.add_argument('--load_posenet_checkpoints', help="restore checkpoint")
     parser.add_argument('--epochs', default=100, type=int, metavar='N',
                         help='number of total epochs to run')
     parser.add_argument('--starting_epoch', default=0, type=int, metavar='N',
@@ -213,11 +233,19 @@ if __name__ == '__main__':
 
     batch_size = args.batch_size
 
-    model = torch.nn.DataParallel(RAFT(args), device_ids=args.gpus)
+    model = torch.nn.DataParallel(Flow2PoseNet(args), device_ids=args.gpus)
     print("Parameter Count: %d" % count_parameters(model))
 
-    if args.load_checkpoints is not None:
-        model.load_state_dict(torch.load(args.load_checkpoints))
+    if args.load_flownet_checkpoints is not None or args.load_posenet_checkpoints is not None:
+        flownet_new_state_dict = torch.load(args.load_flownet_checkpoints)
+        posenet_new_state_dict = torch.load(args.load_posenet_checkpoints)
+        new_state_dict = model.state_dict()
+        for k, v in flownet_new_state_dict.items():
+            k = k[0:7] + 'flowNet.' + k[7:]
+            new_state_dict[k] = v
+        for k, v in posenet_new_state_dict.items():
+            k = k[0:7] + 'flowPoseNet.' + k[7:]
+        model.load_state_dict(new_state_dict)
 
     model.cuda()
 
