@@ -5,8 +5,6 @@ import kornia as kn
 
 PTS_D_DEVICE = 'cuda'
 
-
-
 class BPnP(torch.autograd.Function):
     """
     Back-propagatable PnP

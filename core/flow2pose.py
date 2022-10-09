@@ -12,10 +12,12 @@ from utils_point import invert_pose, quat2mat, tvector2mat, quaternion_from_matr
 from quaternion_distances import quaternion_distance
 
 def Flow2Pose(flow_up, depth, calib):
-    output = torch.zeros(flow_up.shape).cuda()
-    pred_depth_img = torch.zeros(depth.shape).cuda()
+    device = flow_up.device
+
+    output = torch.zeros(flow_up.shape).to(device)
+    pred_depth_img = torch.zeros(depth.shape).to(device)
     pred_depth_img += 1000.
-    output = visibility.image_warp_index(depth.cuda(), flow_up.int().cuda(), pred_depth_img, output,
+    output = visibility.image_warp_index(depth.to(device), flow_up.int(), pred_depth_img, output,
                                          depth.shape[3], depth.shape[2])
     pred_depth_img[pred_depth_img == 1000.] = 0.
     pc_project_uv = output.cpu().permute(0, 2, 3, 1).numpy()
@@ -49,10 +51,11 @@ def Flow2Pose(flow_up, depth, calib):
     return R_predicted, T_predicted
 
 def Flow2PoseBPnP(flow_up, depth, calib, bpnp):
-    output = torch.zeros(flow_up.shape).cuda()
-    pred_depth_img = torch.zeros(depth.shape).cuda()
+    device =flow_up.device
+    output = torch.zeros(flow_up.shape).to(device)
+    pred_depth_img = torch.zeros(depth.shape).to(device)
     pred_depth_img += 1000.
-    output = visibility.image_warp_index(depth.cuda(), flow_up.int().cuda(), pred_depth_img, output,
+    output = visibility.image_warp_index(depth.to(device), flow_up.int().to(device), pred_depth_img, output,
                                          depth.shape[3], depth.shape[2])
     pred_depth_img[pred_depth_img == 1000.] = 0.
     pc_project_uv = output.cpu().permute(0, 2, 3, 1).numpy()
@@ -75,10 +78,10 @@ def Flow2PoseBPnP(flow_up, depth, calib, bpnp):
 
     pts3d, pts2d, match_index = cam_model.deproject_pytorch(depth_img, pc_project_uv[0, :, :, :])
 
-    pts3d = torch.tensor(pts3d, dtype=torch.float32).cuda()
-    pts2d = torch.tensor(pts2d, dtype=torch.float32).cuda()
+    pts3d = torch.tensor(pts3d, dtype=torch.float32).to(device)
+    pts2d = torch.tensor(pts2d, dtype=torch.float32).to(device)
     pts2d = pts2d.unsqueeze(0)
-    K = torch.tensor(cam_mat, dtype=torch.float32).cuda()
+    K = torch.tensor(cam_mat, dtype=torch.float32).to(device)
     P_out = bpnp(pts2d, pts3d, K)
     rvecs = P_out[0, 0:3]
     tvecs = P_out[0, 3:]
@@ -93,27 +96,29 @@ def Flow2PoseBPnP(flow_up, depth, calib, bpnp):
     return R_predicted, T_predicted
 
 def err_Pose(R_pred, T_pred, R_gt, T_gt):
+    device = R_pred.device
+
     R = quat2mat(R_gt)
     T = tvector2mat(T_gt)
-    RT_inv = torch.mm(T, R).cuda()
+    RT_inv = torch.mm(T, R).to(device)
     RT = RT_inv.clone().inverse()
 
     R_pred = quat2mat(R_pred)
     T_pred = tvector2mat(T_pred)
     RT_pred = torch.mm(T_pred, R_pred)
-    RT_pred = RT_pred.cuda()
+    RT_pred = RT_pred.to(device)
     RT_new = torch.mm(RT, RT_pred)
 
     T_composed = RT_new[:3, 3]
     R_composed = quaternion_from_matrix(RT_new)
     R_composed = R_composed.unsqueeze(0)
-    total_trasl_error = torch.tensor(0.0).cuda()
-    total_rot_error = quaternion_distance(R_composed.cuda(), torch.tensor([[1., 0., 0., 0.]]).cuda(),
+    total_trasl_error = torch.tensor(0.0).to(device)
+    total_rot_error = quaternion_distance(R_composed.to(device), torch.tensor([[1., 0., 0., 0.]]).to(device),
                                           device=R_composed.device)
     total_rot_error = total_rot_error * 180. / math.pi
-    total_trasl_error += torch.norm(T_composed.cuda()) * 100.
+    total_trasl_error += torch.norm(T_composed.to(device)) * 100.
 
-    total_trasl_fail = torch.norm(T_composed - T_gt[0].cuda()) * 100
+    total_trasl_fail = torch.norm(T_composed - T_gt[0].to(device)) * 100
     if total_trasl_fail > 400:
         is_fail = True
     else:

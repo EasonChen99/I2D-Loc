@@ -26,10 +26,12 @@ class Data_preprocess:
         return delta_P, indexes
 
     def gen_depth_img(self, uv_RT_af_index, depth_RT_af_index, indexes_uvRT, cam_params):
-        depth_img_RT = torch.zeros(self.real_shape[:2], device='cuda', dtype=torch.float)
+        device = uv_RT_af_index.device
+
+        depth_img_RT = torch.zeros(self.real_shape[:2], device=device, dtype=torch.float)
         depth_img_RT += 1000.
 
-        idx_img = (-1) * torch.ones(self.real_shape[:2], device='cuda', dtype=torch.float)
+        idx_img = (-1) * torch.ones(self.real_shape[:2], device=device, dtype=torch.float)
         indexes_uvRT = indexes_uvRT.float()
 
         depth_img_RT, idx_img = visibility.depth_image(uv_RT_af_index, depth_RT_af_index, indexes_uvRT,
@@ -37,9 +39,9 @@ class Data_preprocess:
                                                        self.real_shape[1], self.real_shape[0])
         depth_img_RT[depth_img_RT == 1000.] = 0.
 
-        deoccl_index_img = (-1) * torch.ones(self.real_shape[:2], device='cuda', dtype=torch.float)
+        deoccl_index_img = (-1) * torch.ones(self.real_shape[:2], device=device, dtype=torch.float)
 
-        depth_img_no_occlusion_RT = torch.zeros_like(depth_img_RT, device='cuda')
+        depth_img_no_occlusion_RT = torch.zeros_like(depth_img_RT, device=device)
         depth_img_no_occlusion_RT, deoccl_index_img = visibility.visibility2(depth_img_RT, cam_params,
                                                                              idx_img,
                                                                              depth_img_no_occlusion_RT,
@@ -62,6 +64,8 @@ class Data_preprocess:
         return indexes_temp
 
     def delta_2(self, delta_P, uv_RT_af_index, mask):
+        device = delta_P.device
+
         delta_P_com = delta_P[mask, :]
 
         delta_P_0 = delta_P_com[:, 0]
@@ -71,14 +75,14 @@ class Data_preprocess:
         uv_RT_af_index_com = uv_RT_af_index[mask, :]
 
         ## generate displacement map
-        project_delta_P_1 = torch.zeros(self.real_shape[:2], device='cuda', dtype=torch.int32)
-        project_delta_P_2 = torch.zeros(self.real_shape[:2], device='cuda', dtype=torch.int32)
+        project_delta_P_1 = torch.zeros(self.real_shape[:2], device=device, dtype=torch.int32)
+        project_delta_P_2 = torch.zeros(self.real_shape[:2], device=device, dtype=torch.int32)
         project_delta_P_1[uv_RT_af_index_com[:, 1].cpu().numpy(), uv_RT_af_index_com[:, 0].cpu().numpy()] = delta_P_0
         project_delta_P_2[uv_RT_af_index_com[:, 1].cpu().numpy(), uv_RT_af_index_com[:, 0].cpu().numpy()] = delta_P_1
 
         project_delta_P_shape = list(self.real_shape[:2])
         project_delta_P_shape.insert(0, 2)
-        project_delta_P = torch.zeros(project_delta_P_shape, device='cuda', dtype=torch.float)
+        project_delta_P = torch.zeros(project_delta_P_shape, device=device, dtype=torch.float)
 
         project_delta_P[0, :, :] = project_delta_P_1
         project_delta_P[1, :, :] = project_delta_P_2
@@ -98,21 +102,21 @@ class Data_preprocess:
         return img, depth, displacement
 
 
-    def push(self, rgbs, pcs, T_errs, R_errs, split='train'):
+    def push(self, rgbs, pcs, T_errs, R_errs, device, split='train'):
         lidar_input = []
         rgb_input = []
         flow_gt = []
 
         for idx in range(len(rgbs)):
-            rgb = rgbs[idx].cuda()
-            pc = pcs[idx].clone().cuda()
+            rgb = rgbs[idx].to(device)
+            pc = pcs[idx].clone().to(device)
             reflectance = None
 
             self.real_shape = [rgb.shape[1], rgb.shape[2], rgb.shape[0]]
 
-            R = mathutils.Quaternion(R_errs[idx].cuda()).to_matrix()
+            R = mathutils.Quaternion(R_errs[idx].to(device)).to_matrix()
             R.resize_4x4()
-            T = mathutils.Matrix.Translation(T_errs[idx].cuda())
+            T = mathutils.Matrix.Translation(T_errs[idx].to(device))
             RT = T * R
 
             pc_rotated = rotate_back(pc, RT)
@@ -121,7 +125,7 @@ class Data_preprocess:
             cam_model = CameraModel()
             cam_model.focal_length = cam_params[:2]
             cam_model.principal_point = cam_params[2:]
-            cam_params = cam_params.cuda()
+            cam_params = cam_params.to(device)
 
             uv, depth, _, refl, VI_indexes = cam_model.project_withindex_pytorch(pc, self.real_shape, reflectance)
             uv = uv.t().int().contiguous()
@@ -133,14 +137,14 @@ class Data_preprocess:
             delta_P, indexes = self.delta_1(uv_RT, uv, VI_indexes_RT, VI_indexes)
 
             indexes_uvRT = VI_indexes_RT[indexes]
-            indexes_uvRT = torch.arange(indexes_uvRT.shape[0]).cuda() + 1
+            indexes_uvRT = torch.arange(indexes_uvRT.shape[0]).to(device) + 1
 
             ## keep common points
             uv_RT_af_index = uv_RT[indexes[VI_indexes_RT], :]
             depth_RT_af_index = depth_RT[indexes[VI_indexes_RT]]
 
             indexes_uv = VI_indexes[indexes]
-            indexes_uv = torch.arange(indexes_uv.shape[0]).cuda() + 1
+            indexes_uv = torch.arange(indexes_uv.shape[0]).to(device) + 1
 
             ## keep common points
             uv_af_index = uv[indexes[VI_indexes], :]
@@ -154,9 +158,8 @@ class Data_preprocess:
             indexes_uv_fresh = self.fresh_indexes(indexes_uv_deoccl, indexes_uv)
 
             ## make depth_image for training
-            depth_img_no_occlusion_RT_training, indexes_uvRT_deoccl_training = self.gen_depth_img(uv_RT, depth_RT,
-                                                                                                     VI_indexes_RT[
-                                                                                                         VI_indexes_RT], cam_params)
+            depth_img_no_occlusion_RT_training, indexes_uvRT_deoccl_training = \
+                self.gen_depth_img(uv_RT, depth_RT, VI_indexes_RT[VI_indexes_RT], cam_params)
 
             ## 这里归一化的时候是不是重新计算一下最大深度比较好
             depth_img_no_occlusion_RT_training /= 100.

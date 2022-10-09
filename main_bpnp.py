@@ -13,17 +13,18 @@ from raft import RAFT
 from datasets_kitti import DatasetVisibilityKittiSingle
 from camera_model import CameraModel
 from utils import fetch_optimizer, Logger, count_parameters
-from utils_point import merge_inputs, overlay_imgs
+from utils_point import merge_inputs, overlay_imgs, quat2mat, tvector2mat, mat2xyzrpy
 from data_preprocess import Data_preprocess
-from losses import sequence_loss
-import depth_map_utils
+from losses import sequence_loss, normal_loss
+from depth_completion import sparse_to_dense
 from flow_viz import flow_to_image
 from flow2pose import Flow2PoseBPnP, err_Pose
-from BPnP import BPnP
+from BPnP import BPnP, batch_project
 
 occlusion_kernel = 5  # 3
 occlusion_threshold = 3  # 3.9999
 seed = 1234
+BPnP_EPOCH = 30
 
 try:
     from torch.cuda.amp import GradScaler
@@ -51,9 +52,11 @@ def _init_fn(worker_id, seed):
     np.random.seed(seed)
     np.random.seed(seed)
 
-def train(args, TrainImgLoader, model, optimizer, scheduler, scaler, logger):
+def train(args, epoch, TrainImgLoader, model, optimizer, scheduler, scaler, logger, device):
     global occlusion_threshold, occlusion_kernel
     model.train()
+    bpnp = BPnP.apply
+    cam_model = CameraModel()
     for i_batch, sample in enumerate(TrainImgLoader):
         rgb = sample['rgb']
         pc = sample['point_cloud']
@@ -62,23 +65,82 @@ def train(args, TrainImgLoader, model, optimizer, scheduler, scaler, logger):
         R_err = sample['rot_error']
 
         data_generate = Data_preprocess(calib, occlusion_threshold, occlusion_kernel)
-        rgb_input, lidar_input, flow_gt = data_generate.push(rgb, pc, T_err, R_err)
+        rgb_input, lidar_input, flow_gt = data_generate.push(rgb, pc, T_err, R_err, device)
 
         # dilation
         depth_img_input = []
         for i in range(lidar_input.shape[0]):
             depth_img = lidar_input[i, 0, :, :].cpu().numpy() * 100.
-            depth_img_dilate = depth_map_utils.fill_in_fast(
-                depth_img.astype(np.float32), extrapolate=False, blur_type='bilateral')
-            # cv2.imwrite("./test.png", (depth_img_dilate / 100. * 255).astype(np.uint8))
+            depth_img_dilate = sparse_to_dense(depth_img.astype(np.float32))
             depth_img_input.append(depth_img_dilate / 100.)
-        depth_img_input = torch.tensor(depth_img_input).float().cuda()
+        depth_img_input = torch.tensor(depth_img_input).float().to(device)
         depth_img_input = depth_img_input.unsqueeze(1)
 
         optimizer.zero_grad()
         flow_preds = model(depth_img_input, rgb_input, lidar_mask=lidar_input, iters=args.iters)
 
         loss, metrics = sequence_loss(flow_preds, flow_gt, args.gamma, MAX_FLOW=400)
+        norm_loss = normal_loss(flow_preds, flow_gt, calib, lidar_input)
+        loss += norm_loss * 100
+
+        ## BPnP loss
+        if epoch > BPnP_EPOCH:
+            loss_poses = 0.0
+
+            flow_up = flow_preds[-1]
+
+            depth_img_ori = lidar_input.cpu().numpy() * 100.
+            pc_project_uv = np.zeros([lidar_input.shape[0], lidar_input.shape[2], lidar_input.shape[3], 2])
+
+            for i in range(flow_up.shape[0]):
+                output = torch.zeros([1, flow_up.shape[1], flow_up.shape[2], flow_up.shape[3]]).to(device)
+                warp_depth_img = torch.zeros([1, 1, flow_up.shape[2], flow_up.shape[3]]).to(device)
+                warp_depth_img += 1000.
+                output = visibility.image_warp_index(lidar_input[i, :, :, :].unsqueeze(0).to(device),
+                                                     flow_up[i, :, :, :].unsqueeze(0).int().to(device), warp_depth_img,
+                                                     output, lidar_input.shape[3], lidar_input.shape[2])
+                warp_depth_img[warp_depth_img == 1000.] = 0
+                pc_project_uv[i, :, :, :] = output.cpu().permute(0, 2, 3, 1).numpy()
+
+            for n in range(lidar_input.shape[0]):
+                mask_depth_1 = pc_project_uv[n, :, :, 0] != 0
+                mask_depth_2 = pc_project_uv[n, :, :, 1] != 0
+                mask_depth = mask_depth_1 + mask_depth_2
+                depth_img = depth_img_ori[n, 0, :, :] * mask_depth
+                cam_params_clone = calib[n].cpu().numpy()
+                cam_model.focal_length = cam_params_clone[:2]
+                cam_model.principal_point = cam_params_clone[2:]
+                pts3d, pts2d, _ = cam_model.deproject_pytorch(depth_img, pc_project_uv[n, :, :, :])
+                pts3d = torch.tensor(pts3d, dtype=torch.float32).to(device)
+                pts2d = torch.tensor(pts2d, dtype=torch.float32).to(device)
+                pts2d = pts2d.unsqueeze(0)
+                cam_mat = np.array(
+                    [[cam_params_clone[0], 0, cam_params_clone[2]], [0, cam_params_clone[1], cam_params_clone[3]],
+                     [0, 0, 1.]])
+                K = torch.tensor(cam_mat, dtype=torch.float32).to(device)
+
+                P_out = bpnp(pts2d, pts3d, K)
+                pts2d_pro = batch_project(P_out, pts3d, K)
+
+                R = quat2mat(R_err[n])
+                T = tvector2mat(T_err[n])
+                RT_inv = torch.mm(T, R)
+                RT = RT_inv.clone().inverse()
+                P_gt = mat2xyzrpy(RT)
+                P_gt = P_gt[[4, 5, 3, 1, 2, 0]]
+                P_gt = P_gt.unsqueeze(0)
+                pts2d_gt = batch_project(P_gt.to(device), pts3d, K)
+
+                pts2d_gt.requires_grad = True
+                pts2d_pro.requires_grad = True
+                loss_poses += ((pts2d_pro - pts2d_gt) ** 2).mean()
+
+            loss_pose = loss_poses / lidar_input.shape[0]
+        else:
+            loss_pose = 0.
+
+        loss += loss_pose * 10
+
         scaler.scale(loss).backward()
         scaler.unscale_(optimizer)
         torch.nn.utils.clip_grad_norm_(model.parameters(), args.clip)
@@ -89,7 +151,7 @@ def train(args, TrainImgLoader, model, optimizer, scheduler, scaler, logger):
 
         logger.push(metrics)
 
-def test(args, TestImgLoader, model, bpnp, cal_pose=False):
+def test(args, TestImgLoader, model, bpnp, device, cal_pose=False):
     global occlusion_threshold, occlusion_kernel
     model.eval()
     out_list, epe_list = [], []
@@ -103,17 +165,15 @@ def test(args, TestImgLoader, model, bpnp, cal_pose=False):
         R_err = sample['rot_error']
 
         data_generate = Data_preprocess(calib, occlusion_threshold, occlusion_kernel)
-        rgb_input, lidar_input, flow_gt = data_generate.push(rgb, pc, T_err, R_err, split='test')
+        rgb_input, lidar_input, flow_gt = data_generate.push(rgb, pc, T_err, R_err, device, split='test')
 
         # dilation
         depth_img_input = []
         for i in range(lidar_input.shape[0]):
             depth_img = lidar_input[i, 0, :, :].cpu().numpy() * 100.
-            depth_img_dilate = depth_map_utils.fill_in_fast(
-                depth_img.astype(np.float32), extrapolate=False, blur_type='bilateral')
-            # cv2.imwrite("./test.png", (depth_img_dilate / 100. * 255).astype(np.uint8))
+            depth_img_dilate = sparse_to_dense(depth_img.astype(np.float32))
             depth_img_input.append(depth_img_dilate / 100.)
-        depth_img_input = torch.tensor(depth_img_input).float().cuda()
+        depth_img_input = torch.tensor(depth_img_input).float().to(device)
         depth_img_input = depth_img_input.unsqueeze(1)
 
         end = time.time()
@@ -129,11 +189,11 @@ def test(args, TestImgLoader, model, bpnp, cal_pose=False):
             flow_image = flow_to_image(flow_up.permute(0, 2, 3, 1).cpu().detach().numpy()[0])
             cv2.imwrite(f'./visulization/flow/{i_batch:06d}.png', flow_image)
 
-            output = torch.zeros(flow_up.shape).cuda()
-            pred_depth_img = torch.zeros(lidar_input.shape).cuda()
+            output = torch.zeros(flow_up.shape).to(device)
+            pred_depth_img = torch.zeros(lidar_input.shape).to(device)
             pred_depth_img += 1000.
-            output = visibility.image_warp_index(lidar_input.cuda(),
-                                                 flow_up.int().cuda(), pred_depth_img,
+            output = visibility.image_warp_index(lidar_input.to(device),
+                                                 flow_up.int().to(device), pred_depth_img,
                                                  output, lidar_input.shape[3], lidar_input.shape[2])
             pred_depth_img[pred_depth_img == 1000.] = 0.
 
@@ -162,8 +222,8 @@ def test(args, TestImgLoader, model, bpnp, cal_pose=False):
             else:
                 err_r_list.append(err_r.item())
                 err_t_list.append(err_t.item())
-            print(i_batch, ": ", np.mean(err_t_list), np.mean(err_r_list),
-                  np.median(err_t_list), np.median(err_r_list), len(outliers), Time / (i_batch+1))
+            print(f"{i_batch:05d}: {np.mean(err_t_list):.5f} {np.mean(err_r_list):.5f} {np.median(err_t_list):.5f} "
+                  f"{np.median(err_r_list):.5f} {len(outliers)} {Time / (i_batch+1):.5f}")
 
     if not cal_pose:
         epe_list = np.array(epe_list)
@@ -174,16 +234,16 @@ def test(args, TestImgLoader, model, bpnp, cal_pose=False):
 
         return epe, f1
     else:
-        return 0., 0.
+        return err_t_list, err_r_list, outliers, Time
 
 
 if __name__ == '__main__':
     parser = argparse.ArgumentParser()
-    parser.add_argument('--name', default='raft', help="name your experiment")
-    parser.add_argument('--data_path', type=str, metavar='DIR', default='/home/chenkuangyi/2D3DRegistration/data/KITTI/sequences',
+    parser.add_argument('--data_path', type=str, metavar='DIR',
+                        default='/data/cky/KITTI/sequences',
                         help='path to dataset')
     parser.add_argument('--test_sequence', type=str, default='00')
-    parser.add_argument('--load_checkpoints', help="restore checkpoint")
+    parser.add_argument('-cps', '--load_checkpoints', help="restore checkpoint")
     parser.add_argument('--epochs', default=100, type=int, metavar='N',
                         help='number of total epochs to run')
     parser.add_argument('--starting_epoch', default=0, type=int, metavar='N',
@@ -210,15 +270,17 @@ if __name__ == '__main__':
     parser.add_argument('--render', action='store_true')
     args = parser.parse_args()
 
+    device = torch.device(f"cuda:{args.gpus[0]}" if torch.cuda.is_available() else "cpu")
+    os.environ["CUDA_LAUNCH_BLOCKING"] = "1"
+    torch.cuda.set_device(args.gpus[0])
+
     batch_size = args.batch_size
 
     model = torch.nn.DataParallel(RAFT(args), device_ids=args.gpus)
     print("Parameter Count: %d" % count_parameters(model))
-
     if args.load_checkpoints is not None:
         model.load_state_dict(torch.load(args.load_checkpoints))
-
-    model.cuda()
+    model.to(device)
 
     bpnp = BPnP.apply
 
@@ -238,7 +300,10 @@ if __name__ == '__main__':
                                                 pin_memory=True)
     if args.evaluate:
         with torch.no_grad():
-            _, _ = test(args, TestImgLoader, model, bpnp, cal_pose=True)
+            err_t_list, err_r_list, outliers, Time = test(args, TestImgLoader, model, bpnp, device, cal_pose=True)
+            print(f"Mean trans error {np.mean(err_t_list):.5f}  Mean rotation error {np.mean(err_r_list):.5f}")
+            print(f"Median trans error {np.median(err_t_list):.5f}  Median rotation error {np.median(err_r_list):.5f}")
+            print(f"Outliers number {len(outliers)}/{len(TestImgLoader)}  Mean {Time / len(TestImgLoader):.5f} per frame")
         sys.exit()
 
     dataset_train = DatasetVisibilityKittiSingle(args.data_path, max_r=args.max_r, max_t=args.max_t,
@@ -263,10 +328,10 @@ if __name__ == '__main__':
     min_val_err = 9999.
     for epoch in range(starting_epoch, args.epochs):
         # train
-        train(args, TrainImgLoader, model, optimizer, scheduler, scaler, logger)
+        train(args, epoch, TrainImgLoader, model, optimizer, scheduler, scaler, logger, device)
 
         if epoch % args.evaluate_interval == 0:
-            epe, f1 = test(args, TestImgLoader, model)
+            epe, f1 = test(args, TestImgLoader, model, bpnp, device)
             print("Validation KITTI: %f, %f" % (epe, f1))
 
             results = {'kitti-epe': epe, 'kitti-f1': f1}

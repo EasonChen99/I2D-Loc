@@ -12,7 +12,6 @@ sys.path.append("core")
 from utils_point import rotate_forward, rotate_back
 
 class CameraModel:
-
     def __init__(self, focal_length=None, principal_point=None):
         self.focal_length = focal_length
         self.principal_point = principal_point
@@ -97,12 +96,13 @@ class CameraModel:
         index = np.argwhere(uv > 0)
         mask = uv > 0
         z = uv[mask]
-        x = (index[:, 1] - self.principal_point[0].cpu().numpy()) * z / self.focal_length[0].cpu().numpy()
-        y = (index[:, 0] - self.principal_point[1].cpu().numpy()) * z / self.focal_length[1].cpu().numpy()
+        # x = (index[:, 1] - self.principal_point[0].cpu().numpy()) * z / self.focal_length[0].cpu().numpy()
+        # y = (index[:, 0] - self.principal_point[1].cpu().numpy()) * z / self.focal_length[1].cpu().numpy()
+        x = (index[:, 1] - self.principal_point[0]) * z / self.focal_length[0]
+        y = (index[:, 0] - self.principal_point[1]) * z / self.focal_length[1]
         zxy = np.array([z, x, y])
-        zxy = torch.tensor(zxy, dtype=torch.float32).cuda()
+        zxy = torch.tensor(zxy, dtype=torch.float32)
         zxyw = torch.cat([zxy, torch.ones(1, zxy.shape[1], device=zxy.device)])
-        # zxyw = rotate_forward(zxyw, R_ini, T_ini)
         zxy = zxyw[:3, :]
         zxy = zxy.cpu().numpy()
         xyz = zxy[[1, 2, 0], :]
