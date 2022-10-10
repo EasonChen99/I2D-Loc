@@ -52,7 +52,6 @@ class DatasetVisibilityKittiSingle(Dataset):
         self.model.focal_length = [7.18856e+02, 7.18856e+02]
         self.model.principal_point = [6.071928e+02, 1.852157e+02]
         for dir in ['00', '03', '05', '06', '07', '08', '09']:
-        # for dir in ['00']:
             self.GTs_R[dir] = []
             self.GTs_T[dir] = []
             df_locations = pd.read_csv(os.path.join(dataset_dir, dir, 'poses.csv'), sep=',', dtype={'timestamp': str})
@@ -113,8 +112,6 @@ class DatasetVisibilityKittiSingle(Dataset):
             if flip:
                 rgb = TTF.hflip(rgb)
             rgb = TTF.rotate(rgb, img_rotation)
-            #io.imshow(np.array(rgb))
-            #io.show()
 
         rgb = to_tensor(rgb)
         rgb = normalization(rgb)
@@ -141,7 +138,7 @@ class DatasetVisibilityKittiSingle(Dataset):
             print(f'File Broken: {pc_path}')
             raise e
 
-        pc_in = torch.from_numpy(pc.astype(np.float32))#.float()
+        pc_in = torch.from_numpy(pc.astype(np.float32))
         if pc_in.shape[1] == 4 or pc_in.shape[1] == 3:
             pc_in = pc_in.t()
         if pc_in.shape[0] == 3:
@@ -164,7 +161,6 @@ class DatasetVisibilityKittiSingle(Dataset):
             img_rotation = np.random.uniform(-5, 5)
         try:
             img = self.custom_transform(img, img_rotation, h_mirror)
-            # print(img)
         except OSError:
             new_idx = np.random.randint(0, self.__len__())
             return self.__getitem__(new_idx)
@@ -199,8 +195,6 @@ class DatasetVisibilityKittiSingle(Dataset):
         R, T = invert_pose(R, T)
         R, T = torch.tensor(R), torch.tensor(T)
 
-        #io.imshow(depth_img.numpy(), cmap='jet')
-        #io.show()
         calib = get_calib_kitti(int(run))
         if h_mirror:
             calib[2] = (img.shape[2] / 2)*2 - calib[2]

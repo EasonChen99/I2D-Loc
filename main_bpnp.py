@@ -21,8 +21,8 @@ from flow_viz import flow_to_image
 from flow2pose import Flow2PoseBPnP, err_Pose
 from BPnP import BPnP, batch_project
 
-occlusion_kernel = 5  # 3
-occlusion_threshold = 3  # 3.9999
+occlusion_kernel = 5
+occlusion_threshold = 3
 seed = 1234
 BPnP_EPOCH = 30
 
