@@ -8,7 +8,7 @@ Kuangyi Chen and Huai Yu<br/>
 <img src="Network.png">
 
 ## Requirements
-The code has been tested with PyTorch 1.12 and Cuda 11.6.
+The code has been trained and tested with PyTorch 1.12 and Cuda 11.6.
 ```Shell
 conda create -n i2d python=3.7 -y
 conda activate i2d
