@@ -16,29 +16,24 @@ pip install -r requirements.txt
 pip install torch==1.12.0+cu116 torchvision==0.13.0+cu116 torchaudio==0.12.0 --extra-index-url https://download.pytorch.org/whl/cu116
 cd core/correlation_package
 python setup.py install
-cd ../..
+cd ..
+cd visibility_package
 python setup.py install
+cd ../..
 ```
 
 ## Demos
-Pretrained models can be downloaded by running
-```Shell
-./download_models.sh
-```
-or downloaded from [google drive](https://drive.google.com/drive/folders/1sWDsfuZ3Up38EUQt7-JDTT1HcGHuJgvT?usp=sharing)
+Pretrained models can be downloaded from [google drive](https://drive.google.com/drive/folders/19VWNCPR1me7SnON1NYJRFrdgd1sKj052?usp=sharing)
 
 You can demo a trained model on a sequence of frames
 ```Shell
-python demo.py --model=models/raft-things.pth --path=demo-frames
+python demo.py --load_checkpoints=checkpoints/2_10/checkpoints.pth --render
 ```
 
 ## Required Data
-To evaluate/train RAFT, you will need to download the required datasets. 
-* [FlyingChairs](https://lmb.informatik.uni-freiburg.de/resources/datasets/FlyingChairs.en.html#flyingchairs)
-* [FlyingThings3D](https://lmb.informatik.uni-freiburg.de/resources/datasets/SceneFlowDatasets.en.html)
-* [Sintel](http://sintel.is.tue.mpg.de/)
+To evaluate/train I2D-Loc, you will need to download the required datasets.
 * [KITTI](http://www.cvlibs.net/datasets/kitti/eval_scene_flow.php?benchmark=flow)
-* [HD1K](http://hci-benchmark.iwr.uni-heidelberg.de/) (optional)
+
 
 
 By default `datasets.py` will search for the datasets in these locations. You can create symbolic links to wherever the datasets were downloaded in the `datasets` folder
