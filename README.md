@@ -27,54 +27,65 @@ Pretrained models can be downloaded from [google drive](https://drive.google.com
 
 You can demo a trained model on a sequence of frames
 ```Shell
-python demo.py --load_checkpoints=checkpoints/2_10/checkpoints.pth --render
+python demo.py --load_checkpoints checkpoints/2_10/checkpoints.pth --render
 ```
 
 ## Required Data
 To evaluate/train I2D-Loc, you will need to download the required datasets.
-* [KITTI](http://www.cvlibs.net/datasets/kitti/eval_scene_flow.php?benchmark=flow)
+* [KITTI](https://www.cvlibs.net/datasets/kitti/eval_odometry.php)
 
+We trained and tested I2D-Loc on the KITTI odometry sequences 00, 03, 05, 07, 08, and 09.
+To obtain the whole LiDAR maps, we aggregate all scans at their ground truth positions. 
+Then, we down-sample the LiDAR maps at a resolution of 0.1m. The downsampled point clouds are saved as h5 files.
 
+Use the script preprocess/kitti_maps.py with the ground truth files in data/ to generate the h5 files.
 
-By default `datasets.py` will search for the datasets in these locations. You can create symbolic links to wherever the datasets were downloaded in the `datasets` folder
+```Shell
+python preprocess/kitti_maps.py --sequence 00 --kitti_folder ./KITTI_ODOMETRY/
+python preprocess/kitti_maps.py --sequence 03 --kitti_folder ./KITTI_ODOMETRY/
+python preprocess/kitti_maps.py --sequence 05 --kitti_folder ./KITTI_ODOMETRY/
+python preprocess/kitti_maps.py --sequence 06 --kitti_folder ./KITTI_ODOMETRY/
+python preprocess/kitti_maps.py --sequence 07 --kitti_folder ./KITTI_ODOMETRY/
+python preprocess/kitti_maps.py --sequence 08 --kitti_folder ./KITTI_ODOMETRY/ --end 3000
+python preprocess/kitti_maps.py --sequence 08 --kitti_folder ./KITTI_ODOMETRY/ --start 3000
+python preprocess/kitti_maps.py --sequence 09 --kitti_folder ./KITTI_ODOMETRY/
+```
+
+The final directory structure should looks like:
 
 ```Shell
 ├── datasets
-    ├── Sintel
-        ├── test
-        ├── training
     ├── KITTI
-        ├── testing
-        ├── training
-        ├── devkit
-    ├── FlyingChairs_release
-        ├── data
-    ├── FlyingThings3D
-        ├── frames_cleanpass
-        ├── frames_finalpass
-        ├── optical_flow
+        ├── sequences
+            ├── 00
+                ├── image_2
+                    ├── *.png
+                ├── local_maps_0.1
+                    ├── *.h5
+                ├── calib.txt
+                ├── map-00_0.1_0-4541.pcd
+                ├── poses.csv
+            ├── 03
+            ├── 05
+            ├── 06
+            ├── 07
+            ├── 08
+            ├── 09
 ```
 
 ## Evaluation
-You can evaluate a trained model using `evaluate.py`
+You can evaluate a trained model using `main.py`
 ```Shell
-python evaluate.py --model=models/raft-things.pth --dataset=sintel --mixed_precision
+python main.py --data_path /data/KITTI/sequences --load_checkpoints checkpoints/2_10/checkpoints.pth -e
 ```
+
 
 ## Training
-We used the following training schedule in our paper (2 GPUs). Training logs will be written to the `runs` which can be visualized using tensorboard
+You can train a model using `main.py`. Training logs will be written to the `runs` which can be visualized using tensorboard.
 ```Shell
-./train_standard.sh
+python main.py --data_path /data/KITTI/sequences --test_sequence 00 --epochs 100 --batch_size 2 --lr 4e-5 --gpus 0 --max_r 10. --max_t 2. --evaluate_interval 1
 ```
-
-If you have a RTX GPU, training can be accelerated using mixed precision. You can expect similiar results in this setting (1 GPU)
+If you want to train a model using BPnP as back-end, you can use `main_bpnp.py`.
 ```Shell
-./train_mixed.sh
+python main_bpnp.py --data_path /data/KITTI/sequences --test_sequence 00 --epochs 100 --batch_size 2 --lr 4e-5 --gpus 0 --max_r 10. --max_t 2. --evaluate_interval 1
 ```
-
-## (Optional) Efficent Implementation
-You can optionally use our alternate (efficent) implementation by compiling the provided cuda extension
-```Shell
-cd alt_cuda_corr && python setup.py install && cd ..
-```
-and running `demo.py` and `evaluate.py` with the `--alternate_corr` flag Note, this implementation is somewhat slower than all-pairs, but uses significantly less GPU memory during the forward pass.
