@@ -16,8 +16,8 @@ setup(
     url="https://github.com/catta202000/CMRNet",
     ext_modules=[
         CUDAExtension('visibility', [
-            'src/visibility_new.cpp',
-            'src/visibility_kernel_new.cu',
+            './visibility_new.cpp',
+            './visibility_kernel_new.cu',
         ])
     ],
     cmdclass={
