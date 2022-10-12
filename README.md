@@ -89,12 +89,3 @@ If you want to train a model using BPnP as back-end, you can use `main_bpnp.py`.
 ```Shell
 python main_bpnp.py --data_path /data/KITTI/sequences --test_sequence 00 --epochs 100 --batch_size 2 --lr 4e-5 --gpus 0 --max_r 10. --max_t 2. --evaluate_interval 1
 ```
-
-### Acknowledgments
-[correlation_package](core/correlation_package) was taken from [flownet2](https://github.com/NVIDIA/flownet2-pytorch/tree/master/networks/correlation_package)
-
-[visibility_package](core/visibility_package) is a modified version of the original [CMRNet](https://github.com/cattaneod/CMRNet)
-
-[kitti_maps.py](preprocess/kitti_maps.py) was taken from [CMRNet](https://github.com/cattaneod/CMRNet)
-
-[raft.py](core/raft.py) is a modified version of the original [RAFT](https://github.com/princeton-vl/RAFT)
