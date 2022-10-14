@@ -102,4 +102,4 @@ python main_bpnp.py --data_path /data/KITTI/sequences --test_sequence 00 --epoch
 ```
 
 ## Acknowledgments
-The code is based on [CMRNet](https://github.com/cattaneod/CMRNet), [RAFT](https://github.com/princeton-vl/RAFT) and [BPnP](https://github.com/BoChenYS/BPnP/BPnP.py).
+The code is based on [CMRNet](https://github.com/cattaneod/CMRNet), [RAFT](https://github.com/princeton-vl/RAFT) and [BPnP](https://github.com/BoChenYS/BPnP).
