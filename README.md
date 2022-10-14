@@ -3,7 +3,7 @@ This repository contains the source code for our paper:
 
 [I2D-Loc: Camera localization via depth to image flow](https://levenberg.github.io/I2D-Loc/)<br/>
 ISPRS 2022 <br/>
-Kuangyi Chen and Huai Yu<br/>
+Kuangyi Chen, Huai Yu, Wen Yang, Lei Yu, Sebastian Scherer and Gui-Song Xia<br/>
 
 <img src="Network.png">
 
@@ -89,3 +89,26 @@ If you want to train a model using BPnP as back-end, you can use `main_bpnp.py`.
 ```Shell
 python main_bpnp.py --data_path /data/KITTI/sequences --test_sequence 00 --epochs 100 --batch_size 2 --lr 4e-5 --gpus 0 --max_r 10. --max_t 2. --evaluate_interval 1
 ```
+
+
+## Citation
+```
+@inproceedings{I2DLoc2022Chen,
+  title={{I2D-Loc: Camera Localization via Image to LiDAR Depth Flow}},
+  author={Kuangyi Chen, Huai Yu, Wen Yang, Lei Yu, Sebastian Scherer and Gui-Song Xia},
+  booktitle={ISPRS Journal of Photogrammetry and Remote Sensing},
+  year={2022}
+}
+```
+
+## Acknowledgments
+[correlation_package](core/correlation_package) was taken from [flownet2](https://github.com/NVIDIA/flownet2-pytorch/tree/master/networks/correlation_package)
+
+[kitti_maps.py](preprocess/kitti_maps.py) was taken from [CMRNet](https://github.com/cattaneod/CMRNet/tree/master/preprocess/kitti_maps.py)
+
+[visibility_package](core/visibility_package) is a modified version of the original [CMRNet](https://github.com/cattaneod/CMRNet/tree/master/src)
+
+[raft.py](core/raft.py) is a modified version of the original [RAFT](https://github.com/princeton-vl/RAFT/tree/master/core/raft.py)
+
+
+
