@@ -40,12 +40,12 @@ def sequence_loss(flow_preds, flow_gt, gamma=0.8, MAX_FLOW=400):
 
     return flow_loss, metrics
 
-class VN_Loss(nn.Module):
+class VNL_Loss(nn.Module):
     def __init__(self, focal_x, focal_y, input_size, device,
                  delta_cos=0.867, delta_diff_x=0.01,
                  delta_diff_y=0.01, delta_diff_z=0.01,
                  delta_z=0.0001, sample_ratio=0.15):
-        super(VN_Loss, self).__init__()
+        super(VNL_Loss, self).__init__()
         self.device = device
         self.fx = torch.tensor([focal_x], dtype=torch.float32).to(device)
         self.fy = torch.tensor([focal_y], dtype=torch.float32).to(device)
@@ -262,7 +262,7 @@ def normal_loss(pred_flows, gt_flows, cam_mats, lidar_input):
         pred_index = torch.cat((output[0, 0, :, :][mask].unsqueeze(0), output[0, 1, :, :][mask].unsqueeze(0)), dim=0)
         gt_index = torch.cat((output2[0, 0, :, :][mask].unsqueeze(0), output2[0, 1, :, :][mask].unsqueeze(0)), dim=0)
 
-        vnl_loss = VN_Loss(cam_params[0], cam_params[1],
+        vnl_loss = VNL_Loss(cam_params[0], cam_params[1],
                            [depth_img.shape[2], depth_img.shape[3]], device)
         loss_p = vnl_loss.forward(torch.tensor(gt_depth_img_dilate).to(device).unsqueeze(0).unsqueeze(0),
                                   torch.tensor(pred_depth_img_dilate).to(device).unsqueeze(0).unsqueeze(0),
