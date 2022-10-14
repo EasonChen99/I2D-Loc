@@ -104,11 +104,12 @@ python main_bpnp.py --data_path /data/KITTI/sequences --test_sequence 00 --epoch
 ## Acknowledgments
 [correlation_package](core/correlation_package) was taken from [flownet2](https://github.com/NVIDIA/flownet2-pytorch/tree/master/networks/correlation_package)
 
-[kitti_maps.py](preprocess/kitti_maps.py) was taken from [CMRNet](https://github.com/cattaneod/CMRNet/tree/master/preprocess/kitti_maps.py)
-
 [visibility_package](core/visibility_package) is a modified version of the original [CMRNet](https://github.com/cattaneod/CMRNet/tree/master/src)
+
+[kitti_maps.py](preprocess/kitti_maps.py) was taken from [CMRNet](https://github.com/cattaneod/CMRNet/tree/master/preprocess/kitti_maps.py)
 
 [raft.py](core/raft.py) is a modified version of the original [RAFT](https://github.com/princeton-vl/RAFT/tree/master/core/raft.py)
 
+[BPnP.py](core/BPnP.py) was taken from [BPnP](https://github.com/BoChenYS/BPnP/BPnP.py)
 
 
