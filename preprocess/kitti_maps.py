@@ -1,10 +1,3 @@
-# -------------------------------------------------------------------
-# Copyright (C) 2020 Università degli studi di Milano-Bicocca, iralab
-# Author: Daniele Cattaneo (d.cattaneo10@campus.unimib.it)
-# Released under Creative Commons
-# Attribution-NonCommercial-ShareAlike 4.0 International License.
-# http://creativecommons.org/licenses/by-nc-sa/4.0/
-# -------------------------------------------------------------------
 import argparse
 import os
 import sys
