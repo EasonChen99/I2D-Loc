@@ -1,7 +1,7 @@
 # I2D-Loc
 This repository contains the source code for our paper:
 
-[I2D-Loc: Camera localization via depth to image flow](https://levenberg.github.io/I2D-Loc/)<br/>
+[I2D-Loc: Camera localization via depth to image flow](https://www.sciencedirect.com/science/article/pii/S0924271622002775?dgcid=coauthor)<br/>
 ISPRS 2022 <br/>
 Kuangyi Chen, Huai Yu, Wen Yang, Lei Yu, Sebastian Scherer and Gui-Song Xia<br/>
 
@@ -93,11 +93,14 @@ python main_bpnp.py --data_path /data/KITTI/sequences --test_sequence 00 --epoch
 
 ## Citation
 ```
-@inproceedings{I2DLoc2022Chen,
+@inproceedings{CHEN2022209,
   title={{I2D-Loc: Camera Localization via Image to LiDAR Depth Flow}},
   author={Kuangyi Chen, Huai Yu, Wen Yang, Lei Yu, Sebastian Scherer and Gui-Song Xia},
   booktitle={ISPRS Journal of Photogrammetry and Remote Sensing},
-  year={2022}
+  volume = {194},
+  pages = {209-221},
+  year={2022},
+  issn = {0924-2716}
 }
 ```
 
