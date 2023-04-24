@@ -76,7 +76,7 @@ if map_file is None:
     downpcd_full = o3.voxel_down_sample(pcl, voxel_size=args.voxel_size)
     downpcd, ind = o3.statistical_outlier_removal(downpcd_full, nb_neighbors=40, std_ratio=0.3)
     #o3.draw_geometries(downpcd)
-    o3.write_point_cloud(f'./map-{sequence}_{args.voxel_size}_{first_frame}-{last_frame}.pcd', downpcd)
+    o3.write_point_cloud(os.path.join(args.kitti_folder, 'sequences', sequence, f'map-{sequence}_{args.voxel_size}_{first_frame}-{last_frame}.pcd'), downpcd)
 else:
     downpcd = o3.read_point_cloud(map_file)
 
