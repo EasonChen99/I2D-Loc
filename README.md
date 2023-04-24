@@ -51,7 +51,7 @@ python preprocess/kitti_maps.py --sequence 08 --kitti_folder ./KITTI_ODOMETRY/ -
 python preprocess/kitti_maps.py --sequence 09 --kitti_folder ./KITTI_ODOMETRY/
 ```
 
-The final directory structure should looks like:
+The final directory structure should look like:
 
 ```Shell
 ├── datasets
