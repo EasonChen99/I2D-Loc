@@ -8,7 +8,7 @@ import math
 import sys
 sys.path.append('core')
 from camera_model import CameraModel
-from utils_point import invert_pose, quat2mat, tvector2mat, quaternion_from_matrix
+from utils_point import invert_pose, quat2mat, tvector2mat, quaternion_from_matrix, rotation_vector_to_euler
 from quaternion_distances import quaternion_distance
 
 def Flow2Pose(flow_up, depth, calib):
@@ -41,7 +41,8 @@ def Flow2Pose(flow_up, depth, calib):
     pts3d, pts2d, match_index = cam_model.deproject_pytorch(depth_img, pc_project_uv[0, :, :, :])
     ret, rvecs, tvecs, inliers = cv2.solvePnPRansac(pts3d, pts2d, cam_mat, None)
 
-    R = mathutils.Euler((rvecs[0], rvecs[1], rvecs[2]), 'XYZ')
+    reuler = rotation_vector_to_euler(rvecs)
+    R = mathutils.Euler((reuler[0], reuler[1], reuler[2]), 'XYZ')
     T = mathutils.Vector((tvecs[0], tvecs[1], tvecs[2]))
     R, T = invert_pose(R, T)
     R, T = torch.tensor(R), torch.tensor(T)

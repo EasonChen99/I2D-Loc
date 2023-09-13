@@ -262,6 +262,25 @@ def to_rotation_matrix(R, T):
     return RT
 
 
+def rotation_vector_to_euler(rvecs):
+    R, _ = cv2.Rodrigues(rvecs)
+
+    sy = np.sqrt(R[0, 0] * R[0, 0] + R[1, 0] * R[1, 0])
+
+    singular = sy < 1e-6
+
+    if not singular:
+        x = np.arctan2(R[2, 1], R[2, 2])
+        y = np.arctan2(-R[2, 0], sy)
+        z = np.arctan2(R[1, 0], R[0, 0])
+    else:
+        x = np.arctan2(-R[1, 2], R[1, 1])
+        y = np.arctan2(-R[2, 0], sy)
+        z = 0
+
+    return np.array([x, y, z])
+
+
 def overlay_imgs(rgb, lidar):
     std = [0.229, 0.224, 0.225]
     mean = [0.485, 0.456, 0.406]
